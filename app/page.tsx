@@ -1,65 +1,131 @@
-import Image from "next/image";
+"use client";
+import { useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Home() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [selections, setSelections] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [savedId, setSavedId] = useState(null);
+
+  async function search() {
+    if (!query.trim()) return;
+    setLoading(true);
+    const res = await fetch(
+      `https://musicbrainz.org/ws/2/release?query=release:${encodeURIComponent(query)}&fmt=json&limit=10`,
+      { headers: { "User-Agent": "musicboxd/1.0 (anonymoususer2000710@gmail.com)" } }
+    );
+    const data = await res.json();
+    const releases = data.releases ?? [];
+    const withArt = releases.map((r) => ({
+      mbid: r.id,
+      title: r.title,
+      artist: r["artist-credit"]?.[0]?.name ?? "Unknown",
+      coverUrl: `https://coverartarchive.org/release/${r.id}/front-250`,
+    }));
+    setResults(withArt);
+    setLoading(false);
+  }
+
+  function toggleSelect(album) {
+    const already = selections.find((s) => s.mbid === album.mbid);
+    if (already) {
+      setSelections(selections.filter((s) => s.mbid !== album.mbid));
+    } else {
+      if (selections.length >= 4) return;
+      setSelections([...selections, album]);
+    }
+  }
+
+  async function saveGrid() {
+    if (selections.length !== 4) return alert("Pick exactly 4 albums");
+    const { data, error } = await supabase
+      .from("album_grids")
+      .insert({
+        album1_url: selections[0].coverUrl,
+        album2_url: selections[1].coverUrl,
+        album3_url: selections[2].coverUrl,
+        album4_url: selections[3].coverUrl,
+      })
+      .select("id")
+      .single();
+    if (error) return alert("Error saving: " + error.message);
+    setSavedId(data.id);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main style={{ maxWidth: 600, margin: "0 auto", padding: 24, fontFamily: "sans-serif" }}>
+      <h1>musicboxd</h1>
+      <p>Search and pick 4 albums for your widget.</p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && search()}
+          placeholder="Search albums..."
+          style={{ flex: 1, padding: 8, fontSize: 16 }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <button onClick={search} style={{ padding: "8px 16px" }}>
+          Search
+        </button>
+      </div>
+
+      {loading && <p>Searching...</p>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 24 }}>
+        {selections.map((s) => (
+          <img
+            key={s.mbid}
+            src={s.coverUrl}
+            alt={s.title}
+            style={{ width: "100%", aspectRatio: "1", objectFit: "cover", cursor: "pointer", outline: "3px solid purple" }}
+            onClick={() => toggleSelect(s)}
+          />
+        ))}
+        {Array.from({ length: 4 - selections.length }).map((_, i) => (
+          <div key={i} style={{ aspectRatio: "1", background: "#eee" }} />
+        ))}
+      </div>
+
+      <button
+        onClick={saveGrid}
+        disabled={selections.length !== 4}
+        style={{ padding: "10px 24px", fontSize: 16, marginBottom: 24 }}
+      >
+        Save my grid ({selections.length}/4)
+      </button>
+
+      {savedId && (
+        <div style={{ background: "#f0f0f0", padding: 16, borderRadius: 8, marginBottom: 24 }}>
+          <p>Your widget ID:</p>
+          <code style={{ fontSize: 14, wordBreak: "break-all" }}>{savedId}</code>
+          <p style={{ marginTop: 8, fontSize: 13 }}>Copy this — you'll paste it into Scriptable.</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        {results.map((album) => {
+          const selected = selections.find((s) => s.mbid === album.mbid);
+          return (
+            <div
+              key={album.mbid}
+              onClick={() => toggleSelect(album)}
+              style={{ cursor: "pointer", outline: selected ? "3px solid purple" : "none" }}
+            >
+              <img
+                src={album.coverUrl}
+                alt={album.title}
+                style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }}
+                onError={(e) => (e.target.style.display = "none")}
+              />
+              <p style={{ fontSize: 12, margin: "4px 0 0" }}>{album.title}</p>
+              <p style={{ fontSize: 11, color: "#666", margin: 0 }}>{album.artist}</p>
+            </div>
+          );
+        })}
+      </div>
+    </main>
   );
 }
