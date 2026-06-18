@@ -18,7 +18,7 @@ export default function Home() {
     );
     const data = await res.json();
     const releases = data.releases ?? [];
-    const withArt = releases.map((r) => ({
+    const withArt = releases.map((r: any) => ({
       mbid: r.id,
       title: r.title,
       artist: r["artist-credit"]?.[0]?.name ?? "Unknown",
